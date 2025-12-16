@@ -1,0 +1,355 @@
+📡 Project Documentation
+Uptime Monitoring Dashboard
+Project Codename
+
+PulseWatch (you can rename later)
+
+1️⃣ Project Overview
+
+PulseWatch is a web-based uptime monitoring system that allows users to:
+
+Add single or multiple website URLs
+
+Configure custom monitoring frequency
+
+Continuously check site availability via HTTP(S)
+
+Log uptime/downtime events
+
+Send email alerts on failures
+
+View logs, uptime analytics & status history
+
+Run continuously as a background service
+
+2️⃣ Tech Stack
+Frontend (Client)
+
+Vue.js 3
+
+Composition API
+
+Pinia (state management)
+
+Axios (API calls)
+
+Chart.js / ECharts (analytics)
+
+Tailwind CSS (UI)
+
+Backend (Server)
+
+Node.js
+
+Express.js
+
+Node-cron (scheduler)
+
+Axios / node-fetch (HTTP checks)
+
+Nodemailer (email alerts)
+
+Prisma / Sequelize (ORM)
+
+Database
+
+PostgreSQL (recommended)
+
+or MySQL (if preferred)
+
+Infrastructure (Optional)
+
+PM2 (process manager)
+
+Docker (optional)
+
+Redis (optional for queues / rate limits)
+
+3️⃣ High-Level Architecture
+Frontend (Vue)
+   |
+   | REST API
+   v
+Backend (Node.js / Express)
+   |
+   | Scheduled Jobs (node-cron)
+   v
+Website Health Checks
+   |
+   | Logs + Metrics
+   v
+Database
+   |
+   | Alerts
+   v
+Email Service (SMTP)
+
+4️⃣ Core Features Breakdown
+4.1 Website Management
+Capabilities
+
+Add single URL
+
+Bulk add (comma-separated / newline-separated)
+
+Edit / Pause / Delete monitors
+
+Set check frequency (in minutes)
+
+Website Model
+Website {
+  id: UUID
+  name: string
+  url: string
+  frequency: number // in minutes
+  isActive: boolean
+  createdAt: Date
+}
+
+4.2 Monitoring Engine
+How It Works
+
+Uses node-cron to schedule checks
+
+Each website has its own frequency
+
+Sends HTTP GET request
+
+Tracks:
+
+Status code
+
+Response time
+
+Timeout
+
+Errors
+
+Health Check Logic
+1. Send request
+2. Measure response time
+3. Check status (200–399 = UP)
+4. If DOWN:
+   - Log event
+   - Trigger alert
+
+4.3 Logging System
+Log Model
+UptimeLog {
+  id: UUID
+  websiteId: UUID
+  status: "UP" | "DOWN"
+  responseTime: number
+  statusCode: number
+  errorMessage: string | null
+  checkedAt: Date
+}
+
+Stored Events
+
+Every check (optional sampling)
+
+All downtime events (mandatory)
+
+4.4 Email Alert System
+Alert Rules
+
+Trigger email when:
+
+Site goes DOWN
+
+Optional: site comes back UP
+
+Avoid spam using cooldown window
+
+Email Config Model
+AlertConfig {
+  id: UUID
+  email: string
+  isEnabled: boolean
+}
+
+Email Content Example
+Subject: 🚨 Website Down Alert
+
+Website: https://example.com
+Status: DOWN
+Time: 2025-12-16 14:30 IST
+Error: ECONNREFUSED
+
+4.5 Analytics & Dashboard
+Dashboard Metrics
+
+Total websites monitored
+
+Currently UP / DOWN
+
+Uptime percentage (24h / 7d / 30d)
+
+Average response time
+
+Charts
+
+Uptime over time
+
+Downtime incidents count
+
+Response time trends
+
+5️⃣ API Design (Backend)
+Base URL
+/api
+
+Website APIs
+POST   /websites
+POST   /websites/bulk
+GET    /websites
+PUT    /websites/:id
+DELETE /websites/:id
+
+Logs APIs
+GET /logs?websiteId=&from=&to=
+
+Analytics APIs
+GET /analytics/uptime/:websiteId
+GET /analytics/summary
+
+Alerts APIs
+POST /alerts/emails
+GET  /alerts/emails
+
+6️⃣ Database Schema (Simplified)
+Website
+------
+id (PK)
+name
+url
+frequency
+is_active
+created_at
+
+UptimeLog
+---------
+id (PK)
+website_id (FK)
+status
+response_time
+status_code
+error_message
+checked_at
+
+AlertEmail
+----------
+id (PK)
+email
+is_enabled
+
+7️⃣ Background Scheduler Design
+Approach
+
+Load all active websites on startup
+
+Create cron jobs dynamically
+
+Restart-safe using DB state
+
+Example Cron
+cron.schedule(`*/${frequency} * * * *`, () => {
+  checkWebsiteHealth(website)
+})
+
+8️⃣ Frontend UI Structure (Vue)
+Pages
+
+/dashboard
+
+/websites
+
+/logs
+
+/analytics
+
+/settings
+
+Components
+
+WebsiteTable
+
+AddWebsiteModal
+
+BulkAddModal
+
+StatusBadge
+
+UptimeChart
+
+LogsTable
+
+EmailSettings
+
+9️⃣ Security & Reliability
+
+URL validation
+
+Timeout protection (e.g. 10s)
+
+Retry logic
+
+Rate limiting
+
+Email alert throttling
+
+Graceful failure handling
+
+🔟 Deployment Strategy
+Backend
+
+Run via PM2
+
+.env for secrets
+
+Always-on monitoring
+
+Frontend
+
+Static build
+
+Serve via Nginx / Vercel
+
+🧠 MASTER PROMPT (Copy–Paste Ready)
+
+Use this as your starting prompt for coding:
+
+You are a senior full-stack engineer.
+
+Build a full uptime monitoring dashboard called "PulseWatch".
+
+Requirements:
+- Backend: Node.js + Express
+- Frontend: Vue.js 3
+- Database: PostgreSQL
+- Use cron-based background jobs
+- Allow adding single and bulk website URLs
+- Allow setting monitoring frequency per site
+- Periodically check website uptime via HTTP requests
+- Log uptime/downtime events with response time and status code
+- Send email alerts on downtime using Nodemailer
+- Store logs and analytics in DB
+- Frontend dashboard to show:
+  - Website status
+  - Uptime percentage
+  - Logs
+  - Charts
+- Provide REST APIs
+- Clean modular architecture
+- Production-ready structure
+- Use environment variables
+- Error handling and logging included
+
+Start with:
+1. Backend folder structure
+2. Database schema
+3. Core monitoring engine
+4. REST API implementation
+5. Vue frontend structure
+6. Charts & analytics
