@@ -1,10 +1,10 @@
-import cron from "node-cron";
+import cron, { type ScheduledTask } from "node-cron";
 import axios from "axios";
 import { storage } from "./storage";
 import { sendDowntimeAlert, sendRecoveryAlert } from "./email";
 import type { Website } from "@shared/schema";
 
-const activeJobs = new Map<string, cron.ScheduledTask>();
+const activeJobs = new Map<string, ScheduledTask>();
 const lastStatus = new Map<string, string>();
 const alertCooldown = new Map<string, number>();
 
