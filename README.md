@@ -69,6 +69,7 @@ docker run --name pulsewatch-db \
 
 Environment Variables (.env)
 - DATABASE_URL: Required. PostgreSQL connection string.
+  - Render example: `postgresql://pulsewatch_xkrg_user:sssxanXCLplhOn1UQxhOhzpxdQAhtaYn@dpg-d51lhov6s9ss73ep4oa0-a:5432/pulsewatch_xkrg`
 - PORT: Optional. Defaults to 5000.
 - SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS / SMTP_FROM: Optional for sending real emails.
   - In development without SMTP, emails are printed to the console by design.
