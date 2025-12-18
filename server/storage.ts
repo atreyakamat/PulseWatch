@@ -1,59 +1,57 @@
-import { 
-  websites, 
-  uptimeLogs, 
-  alertEmails,
-  users,
-  type Website, 
-  type InsertWebsite,
-  type UptimeLog,
-  type InsertUptimeLog,
-  type AlertEmail,
-  type InsertAlertEmail,
-  type User,
-  type InsertUser,
-} from "@shared/schema";
-import { db } from "./db";
-import { eq, desc, and, gte } from "drizzle-orm";
+import { users, websites, uptimeLogs, alertEmails } from "@shared/schema";
+import type { User, InsertUser, Website, InsertWebsite, Log, AlertEmail } from "@shared/schema";
+import { db, pool } from "./db";
+import { eq, desc, like, or, sql, and, gte } from "drizzle-orm";
+import session from "express-session";
+import connectPg from "connect-pg-simple";
+
+const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
-  // Users (legacy)
-  getUser(id: string): Promise<User | undefined>;
+  getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
-  // Websites
-  getWebsites(): Promise<Website[]>;
-  getWebsite(id: string): Promise<Website | undefined>;
-  createWebsite(website: InsertWebsite): Promise<Website>;
-  updateWebsite(id: string, data: Partial<InsertWebsite>): Promise<Website | undefined>;
-  deleteWebsite(id: string): Promise<boolean>;
+
+  getWebsites(query?: string): Promise<Website[]>;
   getActiveWebsites(): Promise<Website[]>;
+  getWebsite(id: number): Promise<Website | undefined>;
+  createWebsite(website: InsertWebsite): Promise<Website>;
+  updateWebsite(id: number, website: Partial<Website>): Promise<Website>;
+  deleteWebsite(id: number): Promise<void>;
+
+  logUptime(log: Omit<Log, "id" | "createdAt">): Promise<Log>;
+  getLogs(limit: number): Promise<Log[]>;
+  getLogsByWebsite(id: number, limit: number): Promise<Log[]>;
   
-  // Uptime Logs
-  getLogs(limit?: number): Promise<UptimeLog[]>;
-  getLogsByWebsite(websiteId: string, limit?: number): Promise<UptimeLog[]>;
-  getLogsSince(since: Date): Promise<UptimeLog[]>;
-  createLog(log: InsertUptimeLog): Promise<UptimeLog>;
-  getLatestLogByWebsite(websiteId: string): Promise<UptimeLog | undefined>;
-  
-  // Alert Emails
+  getUptimeStats(websiteId: number): Promise<{ period: string; uptime: number }[]>;
+  getAnalyticsSummary(): Promise<{ totalWebsites: number; up: number; down: number; avgResponseTime: number }>;
+
   getAlertEmails(): Promise<AlertEmail[]>;
-  getEnabledAlertEmails(): Promise<AlertEmail[]>;
-  createAlertEmail(email: InsertAlertEmail): Promise<AlertEmail>;
-  updateAlertEmail(id: string, data: Partial<InsertAlertEmail>): Promise<AlertEmail | undefined>;
-  deleteAlertEmail(id: string): Promise<boolean>;
+  addAlertEmail(email: string): Promise<AlertEmail>;
+  updateAlertEmail(id: number, enabled: boolean): Promise<AlertEmail>;
+  deleteAlertEmail(id: number): Promise<void>;
+
+  sessionStore: session.Store;
 }
 
 export class DatabaseStorage implements IStorage {
-  // Users
-  async getUser(id: string): Promise<User | undefined> {
+  sessionStore: session.Store;
+
+  constructor() {
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true,
+    });
+  }
+
+  async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user || undefined;
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
@@ -61,14 +59,25 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  // Websites
-  async getWebsites(): Promise<Website[]> {
-    return db.select().from(websites).orderBy(desc(websites.createdAt));
+  async getWebsites(query?: string): Promise<Website[]> {
+    if (query) {
+      const search = `%${query}%`;
+      return await db.select().from(websites)
+        .where(or(like(websites.name, search), like(websites.url, search)))
+        .orderBy(desc(websites.createdAt));
+    }
+    return await db.select().from(websites).orderBy(desc(websites.createdAt));
   }
 
-  async getWebsite(id: string): Promise<Website | undefined> {
+  async getActiveWebsites(): Promise<Website[]> {
+    return await db.select().from(websites)
+      .where(eq(websites.enabled, true))
+      .orderBy(desc(websites.createdAt));
+  }
+
+  async getWebsite(id: number): Promise<Website | undefined> {
     const [website] = await db.select().from(websites).where(eq(websites.id, id));
-    return website || undefined;
+    return website;
   }
 
   async createWebsite(website: InsertWebsite): Promise<Website> {
@@ -76,91 +85,95 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateWebsite(id: string, data: Partial<InsertWebsite>): Promise<Website | undefined> {
-    const [updated] = await db
-      .update(websites)
-      .set(data)
-      .where(eq(websites.id, id))
-      .returning();
-    return updated || undefined;
+  async updateWebsite(id: number, update: Partial<Website>): Promise<Website> {
+    const [updated] = await db.update(websites).set(update).where(eq(websites.id, id)).returning();
+    return updated;
   }
 
-  async deleteWebsite(id: string): Promise<boolean> {
-    const result = await db.delete(websites).where(eq(websites.id, id)).returning();
-    return result.length > 0;
+  async deleteWebsite(id: number): Promise<void> {
+    await db.delete(websites).where(eq(websites.id, id));
   }
 
-  async getActiveWebsites(): Promise<Website[]> {
-    return db.select().from(websites).where(eq(websites.isActive, true));
-  }
-
-  // Uptime Logs
-  async getLogs(limit = 1000): Promise<UptimeLog[]> {
-    return db
-      .select()
-      .from(uptimeLogs)
-      .orderBy(desc(uptimeLogs.checkedAt))
-      .limit(limit);
-  }
-
-  async getLogsByWebsite(websiteId: string, limit = 100): Promise<UptimeLog[]> {
-    return db
-      .select()
-      .from(uptimeLogs)
-      .where(eq(uptimeLogs.websiteId, websiteId))
-      .orderBy(desc(uptimeLogs.checkedAt))
-      .limit(limit);
-  }
-
-  async getLogsSince(since: Date): Promise<UptimeLog[]> {
-    return db
-      .select()
-      .from(uptimeLogs)
-      .where(gte(uptimeLogs.checkedAt, since))
-      .orderBy(desc(uptimeLogs.checkedAt));
-  }
-
-  async createLog(log: InsertUptimeLog): Promise<UptimeLog> {
+  async logUptime(log: Omit<Log, "id" | "createdAt">): Promise<Log> {
     const [created] = await db.insert(uptimeLogs).values(log).returning();
     return created;
   }
 
-  async getLatestLogByWebsite(websiteId: string): Promise<UptimeLog | undefined> {
-    const [log] = await db
-      .select()
+  async getLogs(limit: number): Promise<Log[]> {
+    return await db.select().from(uptimeLogs).orderBy(desc(uptimeLogs.createdAt)).limit(limit);
+  }
+
+  async getLogsByWebsite(id: number, limit: number): Promise<Log[]> {
+    return await db.select().from(uptimeLogs).where(eq(uptimeLogs.websiteId, id)).orderBy(desc(uptimeLogs.createdAt)).limit(limit);
+  }
+
+  async getUptimeStats(websiteId: number): Promise<{ period: string; uptime: number }[]> {
+    const periods = [
+      { label: "24h", hours: 24 },
+      { label: "7d", hours: 24 * 7 },
+      { label: "30d", hours: 24 * 30 },
+    ];
+
+    const stats = [];
+    for (const period of periods) {
+      const since = new Date(Date.now() - period.hours * 60 * 60 * 1000);
+      const [result] = await db
+        .select({
+          total: sql<number>`count(*)`,
+          up: sql<number>`sum(case when ${uptimeLogs.status} = 'UP' then 1 else 0 end)`,
+        })
+        .from(uptimeLogs)
+        .where(and(eq(uptimeLogs.websiteId, websiteId), gte(uptimeLogs.createdAt, since)));
+
+      const total = Number(result.total) || 0;
+      const up = Number(result.up) || 0;
+      const uptime = total === 0 ? 100 : Math.round((up / total) * 100);
+      stats.push({ period: period.label, uptime });
+    }
+    return stats;
+  }
+
+  async getAnalyticsSummary(): Promise<{ totalWebsites: number; up: number; down: number; avgResponseTime: number }> {
+    const [counts] = await db
+      .select({
+        total: sql<number>`count(*)`,
+        up: sql<number>`sum(case when ${websites.status} = 'UP' then 1 else 0 end)`,
+        down: sql<number>`sum(case when ${websites.status} = 'DOWN' then 1 else 0 end)`,
+      })
+      .from(websites);
+
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [avgResp] = await db
+      .select({
+        avg: sql<number>`avg(${uptimeLogs.responseTime})`,
+      })
       .from(uptimeLogs)
-      .where(eq(uptimeLogs.websiteId, websiteId))
-      .orderBy(desc(uptimeLogs.checkedAt))
-      .limit(1);
-    return log || undefined;
+      .where(gte(uptimeLogs.createdAt, since24h));
+
+    return {
+      totalWebsites: Number(counts.total) || 0,
+      up: Number(counts.up) || 0,
+      down: Number(counts.down) || 0,
+      avgResponseTime: Math.round(Number(avgResp.avg) || 0),
+    };
   }
 
-  // Alert Emails
   async getAlertEmails(): Promise<AlertEmail[]> {
-    return db.select().from(alertEmails).orderBy(desc(alertEmails.createdAt));
+    return await db.select().from(alertEmails);
   }
 
-  async getEnabledAlertEmails(): Promise<AlertEmail[]> {
-    return db.select().from(alertEmails).where(eq(alertEmails.isEnabled, true));
-  }
-
-  async createAlertEmail(email: InsertAlertEmail): Promise<AlertEmail> {
-    const [created] = await db.insert(alertEmails).values(email).returning();
+  async addAlertEmail(email: string): Promise<AlertEmail> {
+    const [created] = await db.insert(alertEmails).values({ email, enabled: true }).returning();
     return created;
   }
 
-  async updateAlertEmail(id: string, data: Partial<InsertAlertEmail>): Promise<AlertEmail | undefined> {
-    const [updated] = await db
-      .update(alertEmails)
-      .set(data)
-      .where(eq(alertEmails.id, id))
-      .returning();
-    return updated || undefined;
+  async updateAlertEmail(id: number, enabled: boolean): Promise<AlertEmail> {
+    const [updated] = await db.update(alertEmails).set({ enabled }).where(eq(alertEmails.id, id)).returning();
+    return updated;
   }
 
-  async deleteAlertEmail(id: string): Promise<boolean> {
-    const result = await db.delete(alertEmails).where(eq(alertEmails.id, id)).returning();
-    return result.length > 0;
+  async deleteAlertEmail(id: number): Promise<void> {
+    await db.delete(alertEmails).where(eq(alertEmails.id, id));
   }
 }
 

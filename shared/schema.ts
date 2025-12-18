@@ -1,93 +1,62 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, real } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Website monitors table
 export const websites = pgTable("websites", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
+  id: serial("id").primaryKey(),
   url: text("url").notNull(),
+  name: text("name").notNull(),
   frequency: integer("frequency").notNull().default(5), // in minutes
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  enabled: boolean("enabled").notNull().default(true),
+  status: text("status").default("UNKNOWN"),
+  lastCheck: timestamp("last_check"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Uptime logs table
-export const uptimeLogs = pgTable("uptime_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  websiteId: varchar("website_id").notNull().references(() => websites.id, { onDelete: "cascade" }),
+export const uptimeLogs = pgTable("logs", {
+  id: serial("id").primaryKey(),
+  websiteId: integer("website_id").notNull(),
   status: text("status").notNull(), // "UP" or "DOWN"
-  responseTime: real("response_time"), // in milliseconds
-  statusCode: integer("status_code"),
-  errorMessage: text("error_message"),
-  checkedAt: timestamp("checked_at").notNull().defaultNow(),
+  responseTime: integer("response_time").notNull(), // in milliseconds
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Alert email configurations
 export const alertEmails = pgTable("alert_emails", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
-  isEnabled: boolean("is_enabled").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Relations
-export const websitesRelations = relations(websites, ({ many }) => ({
-  logs: many(uptimeLogs),
-}));
-
-export const uptimeLogsRelations = relations(uptimeLogs, ({ one }) => ({
-  website: one(websites, {
-    fields: [uptimeLogs.websiteId],
-    references: [websites.id],
-  }),
-}));
-
-// Insert schemas
-export const insertWebsiteSchema = createInsertSchema(websites).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  url: z.string().url("Please enter a valid URL"),
-  name: z.string().min(1, "Name is required"),
-  frequency: z.number().min(1).max(60).default(5),
-});
-
-export const insertUptimeLogSchema = createInsertSchema(uptimeLogs).omit({
-  id: true,
-  checkedAt: true,
-});
-
-export const insertAlertEmailSchema = createInsertSchema(alertEmails).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  email: z.string().email("Please enter a valid email"),
-});
-
-// Types
-export type InsertWebsite = z.infer<typeof insertWebsiteSchema>;
-export type Website = typeof websites.$inferSelect;
-
-export type InsertUptimeLog = z.infer<typeof insertUptimeLogSchema>;
-export type UptimeLog = typeof uptimeLogs.$inferSelect;
-
-export type InsertAlertEmail = z.infer<typeof insertAlertEmailSchema>;
-export type AlertEmail = typeof alertEmails.$inferSelect;
-
-// Legacy user types for compatibility
+// Users table
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+// Insert schemas
+export const insertWebsiteSchema = createInsertSchema(websites).pick({
+  url: true,
+  name: true,
+  frequency: true,
+  enabled: true,
 });
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
+export const insertAlertEmailSchema = createInsertSchema(alertEmails).pick({
+  email: true,
+});
+
+export const insertUserSchema = createInsertSchema(users);
+
+// Types
+export type Website = typeof websites.$inferSelect;
+export type InsertWebsite = z.infer<typeof insertWebsiteSchema>;
+export type Log = typeof uptimeLogs.$inferSelect;
+export type AlertEmail = typeof alertEmails.$inferSelect;
 export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
