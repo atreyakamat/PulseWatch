@@ -1,42 +1,34 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { mysqlTable, varchar, int, boolean, timestamp, bigint } from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Website monitors table
-export const websites = pgTable("websites", {
-  id: serial("id").primaryKey(),
-  url: text("url").notNull(),
-  name: text("name").notNull(),
-  frequency: integer("frequency").notNull().default(5), // in minutes
-  enabled: boolean("enabled").notNull().default(true),
-  status: text("status").default("UNKNOWN"),
+export const websites = mysqlTable("websites", {
+  id: bigint("id", { mode: "number" }).primaryKey().autoincrement(),
+  url: varchar("url", { length: 255 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  frequency: int("frequency").notNull().default(5), // minutes
+  enabled: boolean("enabled").default(true).notNull(),
+  status: varchar("status", { length: 50 }).default("UNKNOWN"),
   lastCheck: timestamp("last_check"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Uptime logs table
-export const uptimeLogs = pgTable("logs", {
-  id: serial("id").primaryKey(),
-  websiteId: integer("website_id").notNull(),
-  status: text("status").notNull(), // "UP" or "DOWN"
-  responseTime: integer("response_time").notNull(), // in milliseconds
+export const uptimeLogs = mysqlTable("logs", {
+  id: bigint("id", { mode: "number" }).primaryKey().autoincrement(),
+  websiteId: bigint("website_id", { mode: "number" }).notNull(),
+  status: varchar("status", { length: 50 }).notNull(),
+  responseTime: int("response_time").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Alert email configurations
-export const alertEmails = pgTable("alert_emails", {
-  id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
-  enabled: boolean("enabled").notNull().default(true),
+export const alertEmails = mysqlTable("alert_emails", {
+  id: bigint("id", { mode: "number" }).primaryKey().autoincrement(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  enabled: boolean("enabled").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
-
-// Users table
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
 });
 
 // Insert schemas
@@ -51,12 +43,8 @@ export const insertAlertEmailSchema = createInsertSchema(alertEmails).pick({
   email: true,
 });
 
-export const insertUserSchema = createInsertSchema(users);
-
 // Types
 export type Website = typeof websites.$inferSelect;
 export type InsertWebsite = z.infer<typeof insertWebsiteSchema>;
 export type Log = typeof uptimeLogs.$inferSelect;
 export type AlertEmail = typeof alertEmails.$inferSelect;
-export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;

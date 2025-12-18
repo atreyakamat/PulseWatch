@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { LogsTable } from "@/components/logs/LogsTable";
-import type { Website, UptimeLog } from "@shared/schema";
+import type { Website, Log } from "@shared/schema";
 
 export default function Logs() {
   const [selectedWebsite, setSelectedWebsite] = useState<string>("all");
@@ -20,13 +20,14 @@ export default function Logs() {
     refetchInterval: 30000,
   });
 
-  const { data: logs = [], isLoading } = useQuery<UptimeLog[]>({
+  const { data: logs = [], isLoading } = useQuery<Log[]>({
     queryKey: ["/api/logs"],
     refetchInterval: 30000,
   });
 
   const filteredLogs = logs.filter((log) => {
-    if (selectedWebsite !== "all" && log.websiteId !== selectedWebsite) {
+    const logWebsiteId = String(log.websiteId);
+    if (selectedWebsite !== "all" && logWebsiteId !== selectedWebsite) {
       return false;
     }
     if (statusFilter !== "all" && log.status !== statusFilter) {
@@ -66,7 +67,7 @@ export default function Logs() {
           <SelectContent>
             <SelectItem value="all">All Websites</SelectItem>
             {websites.map((website) => (
-              <SelectItem key={website.id} value={website.id}>
+              <SelectItem key={website.id} value={String(website.id)}>
                 {website.name}
               </SelectItem>
             ))}

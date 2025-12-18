@@ -4,14 +4,31 @@ import { storage } from "./storage";
 import { insertWebsiteSchema, insertAlertEmailSchema } from "@shared/schema";
 import { z } from "zod";
 import { startMonitor, stopMonitor, restartMonitor, initializeMonitors } from "./monitor";
+import { setupAuth } from "./auth";
+import { getRecentAlerts } from "./email";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Initialize authentication (still useful for login UI, but we won't block API)
+  setupAuth(app);
+
   // Initialize monitors when server starts
   initializeMonitors().catch(err => {
     console.error("Failed to initialize monitors:", err);
+  });
+
+  // Seed default alert email if none exist
+  storage.getAlertEmails().then(async (emails) => {
+    if (emails.length === 0) {
+      console.log("Seeding default alert email...");
+      try {
+        await storage.addAlertEmail("admin@example.com");
+      } catch (e) {
+        console.error("Failed to seed email:", e);
+      }
+    }
   });
 
   // === Website Routes ===
@@ -39,7 +56,7 @@ export async function registerRoutes(
     }
   });
 
-  // Create website
+  // Create website (NO AUTH CHECK)
   app.post("/api/websites", async (req, res) => {
     try {
       const data = insertWebsiteSchema.parse(req.body);
@@ -57,7 +74,7 @@ export async function registerRoutes(
     }
   });
 
-  // Bulk create websites
+  // Bulk create websites (NO AUTH CHECK)
   app.post("/api/websites/bulk", async (req, res) => {
     try {
       const { websites } = req.body;
@@ -84,7 +101,7 @@ export async function registerRoutes(
     }
   });
 
-  // Update website
+  // Update website (NO AUTH CHECK)
   app.patch("/api/websites/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -96,7 +113,6 @@ export async function registerRoutes(
       }
 
       // Validate against schema (partial update)
-      // This strips unknown keys that would otherwise cause issues
       const updateData = insertWebsiteSchema.partial().parse(rawUpdate);
 
       const website = await storage.updateWebsite(id, updateData);
@@ -120,15 +136,12 @@ export async function registerRoutes(
     }
   });
 
-  // Delete website
+  // Delete website (NO AUTH CHECK)
   app.delete("/api/websites/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       stopMonitor(id);
-      const deleted = await storage.deleteWebsite(id);
-      // deleteWebsite returns void in storage.ts, so we can't check 'if (!deleted)'
-      // Assuming if it doesn't throw, it succeeded or id didn't exist.
-      // But storage.ts implementation: await db.delete...
+      await storage.deleteWebsite(id);
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -215,9 +228,8 @@ export async function registerRoutes(
       let down = 0;
       
       for (const website of websites) {
-        if (!website.enabled) continue; // Fixed: isActive -> enabled
+        if (!website.enabled) continue;
         
-        // Fixed: Use getLogsByWebsite instead of getLatestLogByWebsite
         const siteLogs = await storage.getLogsByWebsite(website.id, 1);
         const latestLog = siteLogs[0];
 
@@ -255,7 +267,16 @@ export async function registerRoutes(
     }
   });
 
-  // Create alert email
+  // Get recent alert messages (pings)
+  app.get("/api/alerts/recent", async (_req, res) => {
+    try {
+      res.json(getRecentAlerts());
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create alert email (NO AUTH CHECK)
   app.post("/api/alerts/emails", async (req, res) => {
     try {
       const data = insertAlertEmailSchema.parse(req.body);
@@ -272,7 +293,7 @@ export async function registerRoutes(
     }
   });
 
-  // Update alert email
+  // Update alert email (NO AUTH CHECK)
   app.patch("/api/alerts/emails/:id", async (req, res) => {
     try {
       const email = await storage.updateAlertEmail(parseInt(req.params.id), req.body);
@@ -285,11 +306,10 @@ export async function registerRoutes(
     }
   });
 
-  // Delete alert email
+  // Delete alert email (NO AUTH CHECK)
   app.delete("/api/alerts/emails/:id", async (req, res) => {
     try {
       const deleted = await storage.deleteAlertEmail(parseInt(req.params.id));
-      // deleteAlertEmail returns void
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });

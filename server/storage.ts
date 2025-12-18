@@ -1,17 +1,13 @@
-import { users, websites, uptimeLogs, alertEmails } from "@shared/schema";
-import type { User, InsertUser, Website, InsertWebsite, Log, AlertEmail } from "@shared/schema";
-import { db, pool } from "./db";
+import { websites, uptimeLogs, alertEmails } from "@shared/schema";
+import type { Website, InsertWebsite, Log, AlertEmail } from "@shared/schema";
+import { db } from "./db";
 import { eq, desc, like, or, sql, and, gte } from "drizzle-orm";
 import session from "express-session";
-import connectPg from "connect-pg-simple";
+import createMemoryStore from "memorystore";
 
-const PostgresSessionStore = connectPg(session);
+const MemoryStore = createMemoryStore(session);
 
 export interface IStorage {
-  getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-
   getWebsites(query?: string): Promise<Website[]>;
   getActiveWebsites(): Promise<Website[]>;
   getWebsite(id: number): Promise<Website | undefined>;
@@ -38,25 +34,9 @@ export class DatabaseStorage implements IStorage {
   sessionStore: session.Store;
 
   constructor() {
-    this.sessionStore = new PostgresSessionStore({
-      pool,
-      createTableIfMissing: true,
+    this.sessionStore = new MemoryStore({
+      checkPeriod: 86400000,
     });
-  }
-
-  async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
-    return user;
   }
 
   async getWebsites(query?: string): Promise<Website[]> {
@@ -81,18 +61,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createWebsite(website: InsertWebsite): Promise<Website> {
-    const [created] = await db.insert(websites).values(website).returning();
+    const [result] = await db.insert(websites).values(website);
+    const [created] = await db.select().from(websites).where(eq(websites.id, result.insertId as number));
     return created;
   }
 
   async updateWebsite(id: number, update: Partial<Website>): Promise<Website> {
-    // Handle empty update object to prevent SQL syntax error (UPDATE ... SET WHERE ...)
     if (Object.keys(update).length === 0) {
       const [current] = await db.select().from(websites).where(eq(websites.id, id));
       if (!current) throw new Error("Website not found");
       return current;
     }
-    const [updated] = await db.update(websites).set(update).where(eq(websites.id, id)).returning();
+    await db.update(websites).set(update).where(eq(websites.id, id));
+    const [updated] = await db.select().from(websites).where(eq(websites.id, id));
     return updated;
   }
 
@@ -101,7 +82,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async logUptime(log: Omit<Log, "id" | "createdAt">): Promise<Log> {
-    const [created] = await db.insert(uptimeLogs).values(log).returning();
+    const [result] = await db.insert(uptimeLogs).values(log);
+    const [created] = await db.select().from(uptimeLogs).where(eq(uptimeLogs.id, result.insertId as number));
     return created;
   }
 
@@ -169,12 +151,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addAlertEmail(email: string): Promise<AlertEmail> {
-    const [created] = await db.insert(alertEmails).values({ email, enabled: true }).returning();
+    const [result] = await db.insert(alertEmails).values({ email, enabled: true });
+    const [created] = await db.select().from(alertEmails).where(eq(alertEmails.id, result.insertId as number));
     return created;
   }
 
   async updateAlertEmail(id: number, enabled: boolean): Promise<AlertEmail> {
-    const [updated] = await db.update(alertEmails).set({ enabled }).where(eq(alertEmails.id, id)).returning();
+    await db.update(alertEmails).set({ enabled }).where(eq(alertEmails.id, id));
+    const [updated] = await db.select().from(alertEmails).where(eq(alertEmails.id, id));
     return updated;
   }
 

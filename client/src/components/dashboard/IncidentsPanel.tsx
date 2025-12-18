@@ -1,26 +1,32 @@
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import type { UptimeLog, Website } from "@shared/schema";
+import type { Log, Website } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 
 interface IncidentsPanelProps {
-  logs: UptimeLog[];
+  logs: Log[];
   websites: Website[];
   isLoading?: boolean;
 }
 
 export function IncidentsPanel({ logs, websites, isLoading }: IncidentsPanelProps) {
+  const safeDate = (value: string | Date | null | undefined) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const incidents = logs
-    .filter(log => log.status === "DOWN")
-    .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
+    .filter((log) => log.status === "DOWN")
+    .sort((a, b) => (safeDate(b.createdAt)?.getTime() ?? 0) - (safeDate(a.createdAt)?.getTime() ?? 0))
     .slice(0, 10);
 
-  const getWebsiteName = (websiteId: string) => {
+  const getWebsiteName = (websiteId: number) => {
     const website = websites.find(w => w.id === websiteId);
     return website?.name || website?.url || "Unknown";
   };
 
-  const getWebsiteUrl = (websiteId: string) => {
+  const getWebsiteUrl = (websiteId: number) => {
     const website = websites.find(w => w.id === websiteId);
     return website?.url || "";
   };
@@ -66,7 +72,9 @@ export function IncidentsPanel({ logs, websites, isLoading }: IncidentsPanelProp
                     {incident.errorMessage || "Connection Failed"}
                   </p>
                   <span className="text-muted-foreground text-xs whitespace-nowrap">
-                    {formatDistanceToNow(new Date(incident.checkedAt), { addSuffix: true })}
+                    {safeDate(incident.createdAt)
+                      ? formatDistanceToNow(safeDate(incident.createdAt)!, { addSuffix: true })
+                      : "Unknown time"}
                   </span>
                 </div>
                 <p className="text-muted-foreground text-xs truncate">

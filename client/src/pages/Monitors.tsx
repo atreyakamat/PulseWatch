@@ -7,7 +7,7 @@ import { AddMonitorModal } from "@/components/monitors/AddMonitorModal";
 import { BulkAddModal } from "@/components/monitors/BulkAddModal";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Website, UptimeLog } from "@shared/schema";
+import type { Website, Log } from "@shared/schema";
 
 export default function Monitors() {
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -20,7 +20,7 @@ export default function Monitors() {
     refetchInterval: 30000,
   });
 
-  const { data: logs = [] } = useQuery<UptimeLog[]>({
+  const { data: logs = [] } = useQuery<Log[]>({
     queryKey: ["/api/logs"],
     refetchInterval: 30000,
   });

@@ -1,20 +1,26 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import type { Website, UptimeLog } from "@shared/schema";
+import type { Website, Log } from "@shared/schema";
 
 interface MonitorCardProps {
   website: Website;
-  logs: UptimeLog[];
+  logs: Log[];
   onToggle: (id: string, isActive: boolean) => void;
   onDelete: (id: string) => void;
   onClick: () => void;
 }
 
 export function MonitorCard({ website, logs, onToggle, onDelete, onClick }: MonitorCardProps) {
+  const safeDate = (value: string | Date | null | undefined) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const recentLogs = logs
     .filter(log => log.websiteId === website.id)
-    .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
+    .sort((a, b) => (safeDate(b.createdAt)?.getTime() ?? 0) - (safeDate(a.createdAt)?.getTime() ?? 0))
     .slice(0, 30);
 
   const latestLog = recentLogs[0];
@@ -67,7 +73,7 @@ export function MonitorCard({ website, logs, onToggle, onDelete, onClick }: Moni
 
         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
           <Switch
-            checked={website.isActive}
+            checked={website.isActive ?? website.enabled ?? true}
             onCheckedChange={(checked) => onToggle(website.id, checked)}
             data-testid={`switch-monitor-${website.id}`}
           />

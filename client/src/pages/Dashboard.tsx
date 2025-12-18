@@ -1,27 +1,31 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ResponseTimeChart } from "@/components/dashboard/ResponseTimeChart";
 import { IncidentsPanel } from "@/components/dashboard/IncidentsPanel";
+import { WebsiteStatusChart } from "@/components/dashboard/WebsiteStatusChart";
 import { AddMonitorModal } from "@/components/monitors/AddMonitorModal";
-import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Skeleton } from "@/components/ui/skeleton";
-import type { Website, UptimeLog } from "@shared/schema";
+import type { Website, Log } from "@shared/schema";
 
 export default function Dashboard() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const { toast } = useToast();
 
-  const { data: websites = [], isLoading: websitesLoading, error: websitesError } = useQuery<Website[]>({
+  const safeDate = (value: string | Date | null | undefined) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const { data: websites = [], isLoading: websitesLoading } = useQuery<Website[]>({
     queryKey: ["/api/websites"],
     refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
 
-  const { data: logs = [], isLoading: logsLoading, error: logsError } = useQuery<UptimeLog[]>({
+  const { data: logs = [], isLoading: logsLoading } = useQuery<Log[]>({
     queryKey: ["/api/logs"],
     refetchInterval: 30000, // Auto-refresh every 30 seconds
   });
@@ -47,21 +51,21 @@ export default function Dashboard() {
     },
   });
 
-  const getLatestStatus = (websiteId: string) => {
+  const getLatestStatus = (websiteId: number) => {
     const websiteLogs = logs
       .filter(log => log.websiteId === websiteId)
-      .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime());
+      .sort((a, b) => (safeDate(b.createdAt)?.getTime() ?? 0) - (safeDate(a.createdAt)?.getTime() ?? 0));
     return websiteLogs[0]?.status;
   };
 
   const totalMonitors = websites.length;
-  const operational = websites.filter(w => w.isActive && getLatestStatus(w.id) === "UP").length;
-  const down = websites.filter(w => w.isActive && getLatestStatus(w.id) === "DOWN").length;
+  const operational = websites.filter(w => w.enabled && getLatestStatus(w.id) === "UP").length;
+  const down = websites.filter(w => w.enabled && getLatestStatus(w.id) === "DOWN").length;
 
   const recentLogs = logs.filter(log => {
-    const logTime = new Date(log.checkedAt);
+    const logTime = safeDate(log.createdAt);
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    return logTime >= hourAgo && log.responseTime;
+    return (logTime && logTime >= hourAgo && log.responseTime) || false;
   });
 
   const avgResponseTime = recentLogs.length > 0
@@ -124,9 +128,12 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <ResponseTimeChart logs={logs} isLoading={logsLoading} />
-        <IncidentsPanel logs={logs} websites={websites} isLoading={logsLoading} />
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        <ResponseTimeChart logs={logs} isLoading={logsLoading} className="xl:col-span-3" />
+        {/* <WebsiteStatusChart logs={logs} websites={websites} isLoading={websitesLoading || logsLoading} /> */}
+        <div className="xl:col-span-1">
+          <IncidentsPanel logs={logs} websites={websites} isLoading={logsLoading} />
+        </div>
       </div>
 
       <AddMonitorModal

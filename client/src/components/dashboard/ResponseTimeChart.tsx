@@ -1,22 +1,30 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { UptimeLog } from "@shared/schema";
+import { cn } from "@/lib/utils";
+import type { Log } from "@shared/schema";
 
 interface ResponseTimeChartProps {
-  logs: UptimeLog[];
+  logs: Log[];
   isLoading?: boolean;
+  className?: string;
 }
 
 type TimeRange = "1H" | "24H" | "7D";
 
-export function ResponseTimeChart({ logs, isLoading }: ResponseTimeChartProps) {
+export function ResponseTimeChart({ logs, isLoading, className }: ResponseTimeChartProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>("1H");
 
-  const filterLogsByTimeRange = (range: TimeRange) => {
+  const safeDate = (value: string | Date | null | undefined) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const filteredLogs = useMemo(() => {
     const now = new Date();
     let cutoff: Date;
-    
-    switch (range) {
+
+    switch (timeRange) {
       case "1H":
         cutoff = new Date(now.getTime() - 60 * 60 * 1000);
         break;
@@ -27,26 +35,25 @@ export function ResponseTimeChart({ logs, isLoading }: ResponseTimeChartProps) {
         cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         break;
     }
-    
-    return logs
-      .filter(log => new Date(log.checkedAt) >= cutoff)
-      .sort((a, b) => new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime());
-  };
 
-  const filteredLogs = filterLogsByTimeRange(timeRange);
+    return logs
+      .map((log) => ({ log, date: safeDate(log.createdAt) }))
+      .filter((entry) => entry.date && entry.date >= cutoff)
+      .sort((a, b) => (a.date?.getTime() ?? 0) - (b.date?.getTime() ?? 0))
+      .map((entry) => entry.log);
+  }, [logs, timeRange]);
+
+  const yMax = Math.max(...filteredLogs.map((l) => l.responseTime || 0), 100);
+  const yRange = yMax || 1;
 
   const generatePath = () => {
     if (filteredLogs.length < 2) {
       return { line: "", area: "" };
     }
 
-    const maxResponse = Math.max(...filteredLogs.map(l => l.responseTime || 0), 500);
-    const minResponse = 0;
-    const range = maxResponse - minResponse || 1;
-
     const points = filteredLogs.map((log, index) => {
       const x = (index / (filteredLogs.length - 1)) * 500;
-      const y = 150 - ((((log.responseTime || 0) - minResponse) / range) * 130);
+      const y = 150 - (((log.responseTime || 0) / yRange) * 130);
       return { x, y };
     });
 
@@ -71,7 +78,7 @@ export function ResponseTimeChart({ logs, isLoading }: ResponseTimeChartProps) {
 
   return (
     <div 
-      className="lg:col-span-2 p-6 md:p-8 rounded-4xl bg-card border border-foreground/5 flex flex-col"
+      className={cn("p-6 md:p-8 rounded-4xl bg-card border border-foreground/5 flex flex-col", className)}
       data-testid="chart-response-time"
     >
       <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
@@ -141,7 +148,7 @@ export function ResponseTimeChart({ logs, isLoading }: ResponseTimeChartProps) {
             {filteredLogs.length > 0 && (
               <circle
                 cx="500"
-                cy={150 - (((filteredLogs[filteredLogs.length - 1]?.responseTime || 0) / Math.max(...filteredLogs.map(l => l.responseTime || 0), 500)) * 130)}
+                cy={150 - (((filteredLogs[filteredLogs.length - 1]?.responseTime || 0) / yRange) * 130)}
                 r="6"
                 fill="hsl(var(--background))"
                 stroke="hsl(109 90% 50%)"
