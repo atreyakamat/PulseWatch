@@ -86,6 +86,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateWebsite(id: number, update: Partial<Website>): Promise<Website> {
+    // Handle empty update object to prevent SQL syntax error (UPDATE ... SET WHERE ...)
+    if (Object.keys(update).length === 0) {
+      const [current] = await db.select().from(websites).where(eq(websites.id, id));
+      if (!current) throw new Error("Website not found");
+      return current;
+    }
     const [updated] = await db.update(websites).set(update).where(eq(websites.id, id)).returning();
     return updated;
   }

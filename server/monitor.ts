@@ -4,9 +4,10 @@ import { storage } from "./storage";
 import { sendDowntimeAlert, sendRecoveryAlert } from "./email";
 import type { Website } from "@shared/schema";
 
-const activeJobs = new Map<string, ScheduledTask>();
-const lastStatus = new Map<string, string>();
-const alertCooldown = new Map<string, number>();
+// Use number for IDs to match schema
+const activeJobs = new Map<number, ScheduledTask>();
+const lastStatus = new Map<number, string>();
+const alertCooldown = new Map<number, number>();
 
 const ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown between alerts
 
@@ -14,7 +15,6 @@ async function checkWebsite(website: Website): Promise<void> {
   const startTime = Date.now();
   let status: "UP" | "DOWN" = "DOWN";
   let responseTime: number | null = null;
-  let statusCode: number | null = null;
   let errorMessage: string | null = null;
 
   try {
@@ -28,7 +28,7 @@ async function checkWebsite(website: Website): Promise<void> {
     });
 
     responseTime = Date.now() - startTime;
-    statusCode = response.status;
+    const statusCode = response.status;
 
     // Consider 2xx and 3xx status codes as UP
     if (statusCode >= 200 && statusCode < 400) {
@@ -57,12 +57,11 @@ async function checkWebsite(website: Website): Promise<void> {
   }
 
   // Log the check
-  await storage.createLog({
+  // Fixed: Use logUptime and match schema fields (removed statusCode/errorMessage as they aren't in schema)
+  await storage.logUptime({
     websiteId: website.id,
     status,
-    responseTime,
-    statusCode,
-    errorMessage,
+    responseTime: responseTime || 0,
   });
 
   // Handle status changes for alerts
@@ -97,7 +96,8 @@ export function startMonitor(website: Website): void {
   // Stop existing job if any
   stopMonitor(website.id);
 
-  if (!website.isActive) {
+  // Fixed: Use 'enabled' instead of 'isActive'
+  if (!website.enabled) {
     return;
   }
 
@@ -118,7 +118,7 @@ export function startMonitor(website: Website): void {
   });
 }
 
-export function stopMonitor(websiteId: string): void {
+export function stopMonitor(websiteId: number): void {
   const job = activeJobs.get(websiteId);
   if (job) {
     job.stop();

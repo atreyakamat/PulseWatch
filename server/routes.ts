@@ -29,7 +29,7 @@ export async function registerRoutes(
   // Get single website
   app.get("/api/websites/:id", async (req, res) => {
     try {
-      const website = await storage.getWebsite(req.params.id);
+      const website = await storage.getWebsite(parseInt(req.params.id));
       if (!website) {
         return res.status(404).json({ error: "Website not found" });
       }
@@ -87,13 +87,25 @@ export async function registerRoutes(
   // Update website
   app.patch("/api/websites/:id", async (req, res) => {
     try {
-      const website = await storage.updateWebsite(req.params.id, req.body);
+      const id = parseInt(req.params.id);
+      
+      // Handle legacy isActive field if present (map to enabled)
+      const rawUpdate = { ...req.body };
+      if (rawUpdate.isActive !== undefined && rawUpdate.enabled === undefined) {
+        rawUpdate.enabled = rawUpdate.isActive;
+      }
+
+      // Validate against schema (partial update)
+      // This strips unknown keys that would otherwise cause issues
+      const updateData = insertWebsiteSchema.partial().parse(rawUpdate);
+
+      const website = await storage.updateWebsite(id, updateData);
       if (!website) {
         return res.status(404).json({ error: "Website not found" });
       }
 
       // Restart monitor with updated settings
-      if (website.isActive) {
+      if (website.enabled) {
         restartMonitor(website);
       } else {
         stopMonitor(website.id);
@@ -101,6 +113,9 @@ export async function registerRoutes(
 
       res.json(website);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -108,11 +123,12 @@ export async function registerRoutes(
   // Delete website
   app.delete("/api/websites/:id", async (req, res) => {
     try {
-      stopMonitor(req.params.id);
-      const deleted = await storage.deleteWebsite(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Website not found" });
-      }
+      const id = parseInt(req.params.id);
+      stopMonitor(id);
+      const deleted = await storage.deleteWebsite(id);
+      // deleteWebsite returns void in storage.ts, so we can't check 'if (!deleted)'
+      // Assuming if it doesn't throw, it succeeded or id didn't exist.
+      // But storage.ts implementation: await db.delete...
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -129,7 +145,7 @@ export async function registerRoutes(
 
       let logs;
       if (websiteId) {
-        logs = await storage.getLogsByWebsite(websiteId, limit);
+        logs = await storage.getLogsByWebsite(parseInt(websiteId), limit);
       } else {
         logs = await storage.getLogs(limit);
       }
@@ -144,7 +160,7 @@ export async function registerRoutes(
   app.get("/api/logs/:websiteId", async (req, res) => {
     try {
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
-      const logs = await storage.getLogsByWebsite(req.params.websiteId, limit);
+      const logs = await storage.getLogsByWebsite(parseInt(req.params.websiteId), limit);
       res.json(logs);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -156,7 +172,8 @@ export async function registerRoutes(
   // Get uptime analytics for a website
   app.get("/api/analytics/uptime/:websiteId", async (req, res) => {
     try {
-      const logs = await storage.getLogsByWebsite(req.params.websiteId, 1000);
+      const websiteId = parseInt(req.params.websiteId);
+      const logs = await storage.getLogsByWebsite(websiteId, 1000);
       
       const now = new Date();
       const periods = {
@@ -168,7 +185,7 @@ export async function registerRoutes(
       const analytics: Record<string, number> = {};
 
       for (const [period, since] of Object.entries(periods)) {
-        const periodLogs = logs.filter(log => new Date(log.checkedAt) >= since);
+        const periodLogs = logs.filter(log => new Date(log.createdAt!) >= since);
         if (periodLogs.length > 0) {
           const upCount = periodLogs.filter(log => log.status === "UP").length;
           analytics[period] = (upCount / periodLogs.length) * 100;
@@ -192,15 +209,18 @@ export async function registerRoutes(
       const now = new Date();
       const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
       
-      const recentLogs = logs.filter(log => new Date(log.checkedAt) >= last24h);
+      const recentLogs = logs.filter(log => new Date(log.createdAt!) >= last24h);
       
       let operational = 0;
       let down = 0;
       
       for (const website of websites) {
-        if (!website.isActive) continue;
+        if (!website.enabled) continue; // Fixed: isActive -> enabled
         
-        const latestLog = await storage.getLatestLogByWebsite(website.id);
+        // Fixed: Use getLogsByWebsite instead of getLatestLogByWebsite
+        const siteLogs = await storage.getLogsByWebsite(website.id, 1);
+        const latestLog = siteLogs[0];
+
         if (latestLog?.status === "UP") {
           operational++;
         } else if (latestLog?.status === "DOWN") {
@@ -255,7 +275,7 @@ export async function registerRoutes(
   // Update alert email
   app.patch("/api/alerts/emails/:id", async (req, res) => {
     try {
-      const email = await storage.updateAlertEmail(req.params.id, req.body);
+      const email = await storage.updateAlertEmail(parseInt(req.params.id), req.body);
       if (!email) {
         return res.status(404).json({ error: "Email not found" });
       }
@@ -268,10 +288,8 @@ export async function registerRoutes(
   // Delete alert email
   app.delete("/api/alerts/emails/:id", async (req, res) => {
     try {
-      const deleted = await storage.deleteAlertEmail(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Email not found" });
-      }
+      const deleted = await storage.deleteAlertEmail(parseInt(req.params.id));
+      // deleteAlertEmail returns void
       res.status(204).send();
     } catch (error: any) {
       res.status(500).json({ error: error.message });
