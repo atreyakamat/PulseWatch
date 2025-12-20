@@ -25,8 +25,10 @@ export default function Logs() {
     refetchInterval: 30000,
   });
 
+  const websiteIdFilter = selectedWebsite === "all" ? null : Number(selectedWebsite);
+
   const filteredLogs = logs.filter((log) => {
-    if (selectedWebsite !== "all" && log.websiteId !== selectedWebsite) {
+    if (websiteIdFilter !== null && log.websiteId !== websiteIdFilter) {
       return false;
     }
     if (statusFilter !== "all" && log.status !== statusFilter) {
@@ -66,7 +68,7 @@ export default function Logs() {
           <SelectContent>
             <SelectItem value="all">All Websites</SelectItem>
             {websites.map((website) => (
-              <SelectItem key={website.id} value={website.id}>
+              <SelectItem key={website.id} value={String(website.id)}>
                 {website.name}
               </SelectItem>
             ))}

@@ -9,14 +9,16 @@ interface LogsTableProps {
 }
 
 export function LogsTable({ logs, websites, isLoading }: LogsTableProps) {
-  const getWebsiteName = (websiteId: string) => {
-    const website = websites.find(w => w.id === websiteId);
+  const getWebsiteName = (websiteId: number) => {
+    const website = websites.find((w) => w.id === websiteId);
     return website?.name || "Unknown";
   };
 
-  const sortedLogs = [...logs].sort(
-    (a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime()
-  );
+  const sortedLogs = [...logs].sort((a, b) => {
+    const bTime = new Date((b as any).checkedAt ?? b.createdAt ?? 0).getTime();
+    const aTime = new Date((a as any).checkedAt ?? a.createdAt ?? 0).getTime();
+    return bTime - aTime;
+  });
 
   if (isLoading) {
     return (
@@ -55,13 +57,7 @@ export function LogsTable({ logs, websites, isLoading }: LogsTableProps) {
               Response Time
             </th>
             <th className="text-left py-4 px-4 text-sm font-semibold text-muted-foreground">
-              Status Code
-            </th>
-            <th className="text-left py-4 px-4 text-sm font-semibold text-muted-foreground">
               Checked At
-            </th>
-            <th className="text-left py-4 px-4 text-sm font-semibold text-muted-foreground">
-              Error
             </th>
           </tr>
         </thead>
@@ -88,26 +84,8 @@ export function LogsTable({ logs, websites, isLoading }: LogsTableProps) {
                   {log.responseTime ? `${Math.round(log.responseTime)}ms` : "—"}
                 </span>
               </td>
-              <td className="py-4 px-4">
-                <span className={
-                  !log.statusCode ? "text-muted-foreground" :
-                  log.statusCode >= 200 && log.statusCode < 300 ? "text-primary" :
-                  log.statusCode >= 400 ? "text-destructive" : ""
-                }>
-                  {log.statusCode || "—"}
-                </span>
-              </td>
               <td className="py-4 px-4 text-muted-foreground text-sm">
-                {format(new Date(log.checkedAt), "MMM d, yyyy HH:mm:ss")}
-              </td>
-              <td className="py-4 px-4">
-                {log.errorMessage ? (
-                  <span className="text-destructive text-sm truncate max-w-[200px] block">
-                    {log.errorMessage}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
+                {format(new Date((log as any).checkedAt ?? log.createdAt ?? Date.now()), "MMM d, yyyy HH:mm:ss")}
               </td>
             </tr>
           ))}

@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Website monitors table
 export const websites = pgTable("websites", {
-  id: serial("id").primaryKey(),
+  id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
   url: text("url").notNull(),
   name: text("name").notNull(),
   frequency: integer("frequency").notNull().default(5), // in minutes
@@ -17,7 +17,7 @@ export const websites = pgTable("websites", {
 
 // Uptime logs table
 export const uptimeLogs = pgTable("logs", {
-  id: serial("id").primaryKey(),
+  id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
   websiteId: integer("website_id").notNull(),
   status: text("status").notNull(), // "UP" or "DOWN"
   responseTime: integer("response_time").notNull(), // in milliseconds
@@ -26,7 +26,7 @@ export const uptimeLogs = pgTable("logs", {
 
 // Alert email configurations
 export const alertEmails = pgTable("alert_emails", {
-  id: serial("id").primaryKey(),
+  id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
   email: text("email").notNull().unique(),
   enabled: boolean("enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
@@ -34,7 +34,7 @@ export const alertEmails = pgTable("alert_emails", {
 
 // Users table
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });

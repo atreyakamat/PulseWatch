@@ -10,18 +10,29 @@ interface IncidentsPanelProps {
 }
 
 export function IncidentsPanel({ logs, websites, isLoading }: IncidentsPanelProps) {
+  const getIncidentDate = (incident: UptimeLog) => {
+    const raw = (incident as any).checkedAt ?? incident.createdAt;
+    if (!raw) return null;
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
   const incidents = logs
-    .filter(log => log.status === "DOWN")
-    .sort((a, b) => new Date(b.checkedAt).getTime() - new Date(a.checkedAt).getTime())
+    .filter((log) => log.status === "DOWN")
+    .sort((a, b) => {
+      const bDate = getIncidentDate(b)?.getTime() ?? 0;
+      const aDate = getIncidentDate(a)?.getTime() ?? 0;
+      return bDate - aDate;
+    })
     .slice(0, 10);
 
-  const getWebsiteName = (websiteId: string) => {
-    const website = websites.find(w => w.id === websiteId);
+  const getWebsiteName = (websiteId: number) => {
+    const website = websites.find((w) => w.id === websiteId);
     return website?.name || website?.url || "Unknown";
   };
 
-  const getWebsiteUrl = (websiteId: string) => {
-    const website = websites.find(w => w.id === websiteId);
+  const getWebsiteUrl = (websiteId: number) => {
+    const website = websites.find((w) => w.id === websiteId);
     return website?.url || "";
   };
 
@@ -66,7 +77,10 @@ export function IncidentsPanel({ logs, websites, isLoading }: IncidentsPanelProp
                     {incident.errorMessage || "Connection Failed"}
                   </p>
                   <span className="text-muted-foreground text-xs whitespace-nowrap">
-                    {formatDistanceToNow(new Date(incident.checkedAt), { addSuffix: true })}
+                    {(() => {
+                      const when = getIncidentDate(incident);
+                      return when ? formatDistanceToNow(when, { addSuffix: true }) : "Unknown time";
+                    })()}
                   </span>
                 </div>
                 <p className="text-muted-foreground text-xs truncate">

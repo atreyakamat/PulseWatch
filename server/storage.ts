@@ -27,6 +27,7 @@ export interface IStorage {
   getAnalyticsSummary(): Promise<{ totalWebsites: number; up: number; down: number; avgResponseTime: number }>;
 
   getAlertEmails(): Promise<AlertEmail[]>;
+  getEnabledAlertEmails(): Promise<AlertEmail[]>;
   addAlertEmail(email: string): Promise<AlertEmail>;
   updateAlertEmail(id: number, enabled: boolean): Promise<AlertEmail>;
   deleteAlertEmail(id: number): Promise<void>;
@@ -166,6 +167,10 @@ export class DatabaseStorage implements IStorage {
 
   async getAlertEmails(): Promise<AlertEmail[]> {
     return await db.select().from(alertEmails);
+  }
+
+  async getEnabledAlertEmails(): Promise<AlertEmail[]> {
+    return await db.select().from(alertEmails).where(eq(alertEmails.enabled, true));
   }
 
   async addAlertEmail(email: string): Promise<AlertEmail> {
